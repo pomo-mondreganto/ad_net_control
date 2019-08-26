@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 import argparse
 import logging
 import subprocess
@@ -24,13 +26,19 @@ INIT_RULES = [
 
 OPEN_NETWORK_RULES = [
     'FORWARD -i team+ -o vuln+ -j ACCEPT',  # teams can access all vulnboxes
-    'FORWARD -i vuln+ -o team+ -j ACCEPT',  # vulnboxes can access teams too
+    'FORWARD -i vuln+ -o vuln+ -j ACCEPT',  # vulnboxes can access each other
     'FORWARD -i team+ -o jury -j ACCEPT',  # teams can access jury
-]
+    'FORWARD -i vuln+ -o jury -j ACCEPT',  # vulnboxes can access jury (???) TODO: is it useful?
+]  # teams cannot access each other (not even through vulnboxes)
 
 DROP_RULES = [
     'INPUT -j DROP',  # drop all incoming packets
     'FORWARD -j DROP',  # drop all forwarded packets
+]
+
+ALLOW_SSH_RULES = [
+    'INPUT -p tcp --dport 22 -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT',  # ingoing SSH
+    'OUTPUT -p tcp --sport 22 -m conntrack --ctstate ESTABLISHED -j ACCEPT',  # outgoing ssh
 ]
 
 
@@ -41,9 +49,12 @@ def run_command(command):
 
 
 def get_team2vuln_rules(team_count):
-    """During closed network period, team can only access its own vulnbox"""
+    """During closed network period, team can only access its own vulnbox (and vice-versa)"""
     return list(
         f'FORWARD -i team{num} -o vuln{num} -j ACCEPT'
+        for num in range(1, team_count + 1)
+    ) + list(
+        f'FORWARD -i vuln{num} -o team{num} -j ACCEPT'
         for num in range(1, team_count + 1)
     )
 
@@ -70,24 +81,33 @@ def remove_rules(rules):
     logger.info(f'Done removing {len(rules)} rules')
 
 
-def add_drop_rules(*_args):
+def add_drop_rules(*_args, **_kwargs):
+    add_rules(ALLOW_SSH_RULES)
     add_rules(DROP_RULES)
 
 
-def remove_drop_rules(*_args):
+def remove_drop_rules(*_args, **_kwargs):
     remove_rules(DROP_RULES)
+    remove_rules(ALLOW_SSH_RULES)
 
 
 def init_network(*, team_count, **_kwargs):
     rules = INIT_RULES + get_team2vuln_rules(team_count)
     add_rules(rules)
 
+    with open('/proc/sys/net/ipv4/ip_forward', 'w') as f:
+        f.write('1')
 
-def open_network(*_args):
+    add_drop_rules()
+
+
+def open_network(*_args, **_kwargs):
+    remove_drop_rules()
     add_rules(OPEN_NETWORK_RULES)
+    add_drop_rules()
 
 
-def close_network(*_args):
+def close_network(*_args, **_kwargs):
     remove_rules(OPEN_NETWORK_RULES)
 
 
@@ -120,7 +140,5 @@ if __name__ == '__main__':
 
     if args.dry_run:
         DRY_RUN = True
-
-    logger.info('kek')
 
     COMMANDS[args.command](**vars(args))
