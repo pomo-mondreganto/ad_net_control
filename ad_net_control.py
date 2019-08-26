@@ -2,8 +2,8 @@
 
 import argparse
 import logging
-import subprocess
 import shlex
+import subprocess
 
 logger = logging.getLogger('ad_net_control')
 logger.addHandler(logging.StreamHandler())
@@ -12,6 +12,7 @@ DRY_RUN = False
 
 INIT_RULES = [
     'INPUT -m state --state RELATED,ESTABLISHED -j ACCEPT',  # allow already established connections
+    'INPUT -i lo -j ACCEPT',  # accept all local connections
     'INPUT -p udp --dport 30001:30999 -j ACCEPT',  # openvpn team servers
     'INPUT -p udp --dport 31001:31999 -j ACCEPT',  # openvpn vulnbox servers
     'INPUT -p udp --dport 32000 -j ACCEPT',  # openvpn jury server
@@ -32,13 +33,13 @@ OPEN_NETWORK_RULES = [
 ]  # teams cannot access each other (not even through vulnboxes)
 
 DROP_RULES = [
-    'INPUT -j DROP',  # drop all incoming packets
-    'FORWARD -j DROP',  # drop all forwarded packets
+    'INPUT -j DROP',  # drop all incoming packets that are not explicitly allowed above
+    'FORWARD -j DROP',  # drop all forwarded packets that are not explicitly allowed above
 ]
 
 ALLOW_SSH_RULES = [
     'INPUT -p tcp --dport 22 -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT',  # ingoing SSH
-    'OUTPUT -p tcp --sport 22 -m conntrack --ctstate ESTABLISHED -j ACCEPT',  # outgoing ssh
+    'OUTPUT -p tcp --sport 22 -m conntrack --ctstate ESTABLISHED -j ACCEPT',  # outgoing SSH 
 ]
 
 
@@ -49,7 +50,7 @@ def run_command(command):
 
 
 def get_team2vuln_rules(team_count):
-    """During closed network period, team can only access its own vulnbox (and vice-versa)"""
+    """During closed network period, team can only access its own vulnbox (and vise versa)"""
     return list(
         f'FORWARD -i team{num} -o vuln{num} -j ACCEPT'
         for num in range(1, team_count + 1)
@@ -82,29 +83,27 @@ def remove_rules(rules):
 
 
 def add_drop_rules(*_args, **_kwargs):
-    add_rules(ALLOW_SSH_RULES)
-    add_rules(DROP_RULES)
+    add_rules(ALLOW_SSH_RULES + DROP_RULES)
 
 
 def remove_drop_rules(*_args, **_kwargs):
-    remove_rules(DROP_RULES)
-    remove_rules(ALLOW_SSH_RULES)
+    remove_rules(DROP_RULES + ALLOW_SSH_RULES)
 
 
 def init_network(*, team_count, **_kwargs):
-    rules = INIT_RULES + get_team2vuln_rules(team_count)
+    rules = INIT_RULES + get_team2vuln_rules(team_count) + DROP_RULES
     add_rules(rules)
-
-    with open('/proc/sys/net/ipv4/ip_forward', 'w') as f:
-        f.write('1')
-
-    add_drop_rules()
+    
+    logger.info('Enabling ip forwarding')
+    
+    if not DRY_RUN:
+        with open('/proc/sys/net/ipv4/ip_forward', 'w') as f:
+            f.write('1')
 
 
 def open_network(*_args, **_kwargs):
     remove_drop_rules()
-    add_rules(OPEN_NETWORK_RULES)
-    add_drop_rules()
+    add_rules(OPEN_NETWORK_RULES + DROP_RULES)
 
 
 def close_network(*_args, **_kwargs):
@@ -112,7 +111,7 @@ def close_network(*_args, **_kwargs):
 
 
 def shutdown_network(*, team_count, **_kwargs):
-    all_rules = OPEN_NETWORK_RULES + INIT_RULES + get_team2vuln_rules(team_count)
+    all_rules = OPEN_NETWORK_RULES + INIT_RULES + get_team2vuln_rules(team_count) + DROP_RULES + ALLOW_SSH_RULES
     remove_rules(all_rules)
 
 
