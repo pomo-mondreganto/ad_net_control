@@ -29,7 +29,7 @@ OPEN_NETWORK_RULES = [
     'FORWARD -i team+ -o vuln+ -j ACCEPT',  # teams can access all vulnboxes
     'FORWARD -i vuln+ -o vuln+ -j ACCEPT',  # vulnboxes can access each other
     'FORWARD -i team+ -o jury -j ACCEPT',  # teams can access jury
-    'FORWARD -i vuln+ -o jury -j ACCEPT',  # vulnboxes can access jury (???) TODO: is it useful?
+    'FORWARD -i vuln+ -o jury -j ACCEPT',  # vulnboxes can access jury
 ]  # teams cannot access each other (not even through vulnboxes)
 
 DROP_RULES = [
@@ -39,7 +39,7 @@ DROP_RULES = [
 
 ALLOW_SSH_RULES = [
     'INPUT -p tcp --dport 22 -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT',  # ingoing SSH
-    'OUTPUT -p tcp --sport 22 -m conntrack --ctstate ESTABLISHED -j ACCEPT',  # outgoing SSH 
+    'OUTPUT -p tcp --sport 22 -m conntrack --ctstate ESTABLISHED -j ACCEPT',  # outgoing SSH
 ]
 
 
@@ -91,11 +91,12 @@ def remove_drop_rules(*_args, **_kwargs):
 
 
 def init_network(*, team_count, **_kwargs):
-    rules = INIT_RULES + get_team2vuln_rules(team_count) + DROP_RULES
+    rules = INIT_RULES + get_team2vuln_rules(team_count)
     add_rules(rules)
-    
+    add_drop_rules()
+
     logger.info('Enabling ip forwarding')
-    
+
     if not DRY_RUN:
         with open('/proc/sys/net/ipv4/ip_forward', 'w') as f:
             f.write('1')
@@ -103,7 +104,8 @@ def init_network(*, team_count, **_kwargs):
 
 def open_network(*_args, **_kwargs):
     remove_drop_rules()
-    add_rules(OPEN_NETWORK_RULES + DROP_RULES)
+    add_rules(OPEN_NETWORK_RULES)
+    add_drop_rules()
 
 
 def close_network(*_args, **_kwargs):
@@ -111,7 +113,8 @@ def close_network(*_args, **_kwargs):
 
 
 def shutdown_network(*, team_count, **_kwargs):
-    all_rules = OPEN_NETWORK_RULES + INIT_RULES + get_team2vuln_rules(team_count) + DROP_RULES + ALLOW_SSH_RULES
+    remove_drop_rules()
+    all_rules = OPEN_NETWORK_RULES + INIT_RULES + get_team2vuln_rules(team_count)
     remove_rules(all_rules)
 
 
