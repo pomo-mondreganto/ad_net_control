@@ -41,8 +41,8 @@ DROP_RULES = [
 ]
 
 ALLOW_SSH_RULES = [
-    'INPUT -p tcp --dport 22 -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT',  # ingoing SSH
-    'OUTPUT -p tcp --sport 22 -m conntrack --ctstate ESTABLISHED -j ACCEPT',  # outgoing SSH
+    'INPUT -p tcp --dport 22 -m state --state NEW,RELATED,ESTABLISHED -j ACCEPT',  # ingoing SSH
+    'OUTPUT -p tcp --sport 22 -m state --state RELATED,ESTABLISHED -j ACCEPT',  # outgoing SSH
 ]
 
 
@@ -86,11 +86,13 @@ def remove_rules(rules):
 
 
 def add_drop_rules(*_args, **_kwargs):
-    add_rules(ALLOW_SSH_RULES + DROP_RULES)
+    add_rules(ALLOW_SSH_RULES)
+    add_rules(DROP_RULES)
 
 
 def remove_drop_rules(*_args, **_kwargs):
-    remove_rules(DROP_RULES + ALLOW_SSH_RULES)
+    remove_rules(DROP_RULES)
+    remove_rules(ALLOW_SSH_RULES)
 
 
 def init_network(*, team_count, **_kwargs):
