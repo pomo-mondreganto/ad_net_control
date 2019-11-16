@@ -191,7 +191,8 @@ def ban_team(teams, team, *_args, **_kwargs):
         logger.error('Specify all required parameters: teams, team')
         exit(1)
 
-    count_before = len(INIT_RULES) + len(get_team2vuln_rules(teams))
+    forward_init_rules = list(filter(lambda x: x.startswith('FORWARD'), INIT_RULES))
+    count_before = len(forward_init_rules) + len(get_team2vuln_rules(teams))
     insert_rules(get_ban_rules(team), count_before)
 
 
@@ -200,7 +201,8 @@ def isolate_team(teams, team, *_args, **_kwargs):
         logger.error('Specify all required parameters: teams, team')
         exit(1)
 
-    count_before = len(INIT_RULES) + len(get_team2vuln_rules(teams))
+    forward_init_rules = list(filter(lambda x: x.startswith('FORWARD'), INIT_RULES))
+    count_before = len(forward_init_rules) + len(get_team2vuln_rules(teams))
     insert_rules(get_isolation_rules(team), count_before)
 
 
