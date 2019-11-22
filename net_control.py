@@ -99,8 +99,10 @@ def rule_exists(rule):
     if DRY_RUN:
         return False
 
+    logger.debug(f"Checking if rule {rule} exists")
+
     command = ['iptables', '-C'] + shlex.split(rule)
-    rc = subprocess.call(command)
+    rc = subprocess.call(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     return rc == 0
 
 
