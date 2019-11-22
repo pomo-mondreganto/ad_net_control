@@ -4,6 +4,7 @@ import argparse
 import logging
 import shlex
 import subprocess
+import re
 
 logger = logging.getLogger('ad_net_control')
 logger.addHandler(logging.StreamHandler())
@@ -29,10 +30,11 @@ INIT_RULES = [
 ]
 
 OPEN_NETWORK_RULES = [
-    'FORWARD -i team+ -o vuln+ -j ACCEPT',  # teams can access all vulnboxes
-    'FORWARD -i vuln+ -o vuln+ -j ACCEPT',  # vulnboxes can access each other
-    'FORWARD -i team+ -o jury -j ACCEPT',  # teams can access jury
-    'FORWARD -i vuln+ -o jury -j ACCEPT',  # vulnboxes can access jury
+    'FORWARD -i team+ -o vuln+ -j ACCEPT',  # teams can access all vulnboxes from same server
+    'FORWARD -i vuln+ -o vuln+ -j ACCEPT',  # vulnboxes can access each other on the same server
+    'FORWARD -i team+ -o eth0 -j ACCEPT',  # teams can access all other vpn servers & jury
+    'FORWARD -i vuln+ -o eth0 -j ACCEPT',  # vulnboxes can access all other vpn servers & jury
+    'FORWARD -i eth0 -o vuln+ -j ACCEPT',  # other vpn servers & jury can access vulnboxes
 ]  # teams cannot access each other (not even through vulnboxes)
 
 DROP_RULES = [
@@ -65,14 +67,14 @@ def run_command(command):
         proc.wait()
 
 
-def get_team2vuln_rules(team_count):
+def get_team2vuln_rules(teams_list):
     """During closed network period, team can only access its own vulnbox (and vise versa)"""
     return list(
         f'FORWARD -i team{num} -o vuln{num} -j ACCEPT'
-        for num in range(1, team_count + 1)
+        for num in teams_list
     ) + list(
         f'FORWARD -i vuln{num} -o team{num} -j ACCEPT'
-        for num in range(1, team_count + 1)
+        for num in teams_list
     )
 
 
@@ -221,11 +223,30 @@ COMMANDS = {
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Manage router network during AD CTF')
     parser.add_argument('command', choices=COMMANDS.keys(), help='Command to run')
-    parser.add_argument('--teams', '-t', type=int, metavar='N', help='Team count')
     parser.add_argument('--team', type=int, metavar='N', help='Team number (1-indexed) for ban or isolation')
     parser.add_argument('--verbose', '-v', help='Turn verbose logging on', action='store_true')
     parser.add_argument('--dry-run', help='Just print rules (verbose mode)', action='store_true')
+
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument('--teams', '-t', type=int, metavar='N', help='Team count')
+    group.add_argument('--range', type=str, metavar='N-N', help='Range of teams (inclusive)')
+    group.add_argument('--list', type=str, metavar='N,N,...', help='List of teams')
+
     args = parser.parse_args()
+
+    if args.teams:
+        parsed_teams = range(1, args.teams + 1)
+    elif args.range:
+        match = re.search(r"(\d+)-(\d+)", args.range)
+        if not match:
+            print('Invalid range')
+            exit(1)
+
+        parsed_teams = range(int(match.group(1)), int(match.group(2)) + 1)
+    else:
+        parsed_teams = list(map(int, args.list.split(',')))
+
+    args.teams = parsed_teams
 
     if args.verbose or args.dry_run:
         logger.setLevel(logging.DEBUG)
