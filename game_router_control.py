@@ -29,7 +29,6 @@ OPEN_NETWORK_RULES = [
 ]  # teams cannot access each other (not even through vulnboxes)
 
 DROP_RULES = [
-    'INPUT -j DROP',  # drop all incoming packets that are not explicitly allowed above
     'FORWARD -j DROP',  # drop all forwarded packets that are not explicitly allowed above
 ]
 
