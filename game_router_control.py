@@ -16,14 +16,6 @@ from helpers import (
 )
 
 INIT_RULES = [
-    'INPUT -m state --state RELATED,ESTABLISHED -j ACCEPT',  # allow already established connections
-    'INPUT -p udp --dport 30001:30999 -j ACCEPT',  # openvpn team servers
-    'INPUT -p udp --dport 31001:31999 -j ACCEPT',  # openvpn vulnbox servers
-    'INPUT -p udp --dport 32000 -j ACCEPT',  # openvpn jury server
-    'INPUT -i lo -j ACCEPT',  # accept all local connections
-    'INPUT -p icmp --icmp-type 8 -m state --state NEW,ESTABLISHED,RELATED -j ACCEPT',  # allow icmp 8
-    'INPUT -p icmp --icmp-type 0 -m state --state NEW,ESTABLISHED,RELATED -j ACCEPT',  # allow icmp 0
-
     'INPUT -m conntrack --ctstate INVALID -j DROP',  # drop invalid packets
 
     'FORWARD -m state --state RELATED,ESTABLISHED -j ACCEPT',  # allow already established connections
