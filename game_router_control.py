@@ -29,7 +29,7 @@ INIT_RULES = [
     'FORWARD -m state --state RELATED,ESTABLISHED -j ACCEPT',  # allow already established connections
     'FORWARD -s 10.10.10.0/24 -o eth+ -j ACCEPT',  # jury access to vulnboxes
 
-    'POSTROUTING -t nat -d 10.70.0.0/24 -j MASQUERADE',  # vulnboxes masquerade
+    'POSTROUTING -t nat -d 10.70.0.0/16 -j MASQUERADE',  # vulnboxes masquerade
 ]
 
 OPEN_NETWORK_RULES = [
