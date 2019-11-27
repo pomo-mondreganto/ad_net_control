@@ -121,7 +121,6 @@ def init_network(*, teams, **_kwargs):
         if not DRY_RUN:
             with open('/proc/sys/net/ipv4/ip_forward', 'w') as f:
                 f.write('1')
-            f.write('1')
 
 
 def open_network(*_args, **_kwargs):
