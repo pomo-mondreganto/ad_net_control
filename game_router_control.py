@@ -24,7 +24,7 @@ INIT_RULES = [
     'INPUT -p icmp --icmp-type 8 -m state --state NEW,ESTABLISHED,RELATED -j ACCEPT',  # allow icmp 8
     'INPUT -p icmp --icmp-type 0 -m state --state NEW,ESTABLISHED,RELATED -j ACCEPT',  # allow icmp 0
 
-    'INPUT -m conntrack --ctstate INVALID -j DROP'  # drop invalid packets
+    'INPUT -m conntrack --ctstate INVALID -j DROP',  # drop invalid packets
 
     'FORWARD -m state --state RELATED,ESTABLISHED -j ACCEPT',  # allow already established connections
     'FORWARD -s 10.10.10.0/24 -o eth+ -j ACCEPT',  # jury access to vulnboxes
