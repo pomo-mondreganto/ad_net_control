@@ -6,7 +6,6 @@ import shlex
 import subprocess
 import re
 
-
 from helpers import (
     logger,
     add_rules,
@@ -18,28 +17,23 @@ from helpers import (
 
 INIT_RULES = [
     'INPUT -m state --state RELATED,ESTABLISHED -j ACCEPT',  # allow already established connections
+    'INPUT -p udp --dport 30001:30999 -j ACCEPT',  # openvpn team servers
+    'INPUT -p udp --dport 31001:31999 -j ACCEPT',  # openvpn vulnbox servers
+    'INPUT -p udp --dport 32000 -j ACCEPT',  # openvpn jury server
     'INPUT -i lo -j ACCEPT',  # accept all local connections
     'INPUT -p icmp --icmp-type 8 -m state --state NEW,ESTABLISHED,RELATED -j ACCEPT',  # allow icmp 8
     'INPUT -p icmp --icmp-type 0 -m state --state NEW,ESTABLISHED,RELATED -j ACCEPT',  # allow icmp 0
 
-    'INPUT -p udp --dport 30001:30999 -j ACCEPT',  # openvpn team servers
-    'INPUT -p udp --dport 31001:31999 -j ACCEPT',  # openvpn vulnbox servers
-    'INPUT -p udp --dport 32000 -j ACCEPT',  # openvpn jury server
+    'INPUT -m conntrack --ctstate INVALID -j DROP'  # drop invalid packets
 
     'FORWARD -m state --state RELATED,ESTABLISHED -j ACCEPT',  # allow already established connections
-    'FORWARD -i jury -o team+ -j ACCEPT',  # jury access to teams
-    'FORWARD -i jury -o vuln+ -j ACCEPT',  # jury access to vulnboxes
+    'FORWARD -s 10.10.10.0/24 -o eth+ -j ACCEPT',  # jury access to vulnboxes
 
-    'POSTROUTING -t nat -o team+ -j MASQUERADE',  # team masquerade
-    'POSTROUTING -t nat -o vuln+ -j MASQUERADE',  # vulnboxes masquerade
+    'POSTROUTING -t nat -d 10.70.0.0/24 -j MASQUERADE',  # vulnboxes masquerade
 ]
 
 OPEN_NETWORK_RULES = [
-    'FORWARD -i team+ -o vuln+ -j ACCEPT',  # teams can access all vulnboxes from same server
-    'FORWARD -i vuln+ -o vuln+ -j ACCEPT',  # vulnboxes can access each other on the same server
-    'FORWARD -i team+ -o eth0 -j ACCEPT',  # teams can access all other vpn servers & jury
-    'FORWARD -i vuln+ -o eth0 -j ACCEPT',  # vulnboxes can access all other vpn servers & jury
-    'FORWARD -i eth0 -o vuln+ -j ACCEPT',  # other vpn servers & jury can access vulnboxes
+    'FORWARD -i eth+ -o eth+ -j ACCEPT',  # teams & vulnboxes can access other vulnboxes
 ]  # teams cannot access each other (not even through vulnboxes)
 
 DROP_RULES = [
@@ -55,24 +49,22 @@ ALLOW_SSH_RULES = [
 
 def get_isolation_rules(team):
     return [
-        f'FORWARD -o vuln{team} -j DROP',  # To be inserted after the rule -i teamN -o vulnN
+        f'FORWARD ! -s 10.60.{team}.0/24 -o eth{team} -j DROP',  # allow access to team only
     ]
 
 
 def get_ban_rules(team):
     return [
-        f'FORWARD -i team{team} -j DROP',  # To be inserted after the rule -i teamN -o vulnN
-        f'FORWARD -i vuln{team} -j DROP',  # To be inserted after the rule -i vulnN -o teamN
+        f'FORWARD -i eth{team} -j DROP',  # deny all incoming to vulnbox
+        f'FORWARD -o eth{team} -j DROP',  # deny all outgoing from vulnbox
+        f'FORWARD -s 10.60.{team}.0/24 -j DROP'  # deny all ingoing from team subnet
     ]
 
 
 def get_team2vuln_rules(teams_list):
-    """During closed network period, team can only access its own vulnbox (and vise versa)"""
+    """During closed network period, team can only access its own vulnbox"""
     return list(
-        f'FORWARD -i team{num} -o vuln{num} -j ACCEPT'
-        for num in teams_list
-    ) + list(
-        f'FORWARD -i vuln{num} -o team{num} -j ACCEPT'
+        f'FORWARD -s 10.60.{num}.0/24 -o eth{num} -j ACCEPT'
         for num in teams_list
     )
 
@@ -118,10 +110,17 @@ def init_network(*, teams, **_kwargs):
     add_rules(rules)
     add_drop_rules()
 
-    logger.info('Enabling ip forwarding')
+    needs_forwarding = False
+    with open('/proc/sys/net/ipv4/ip_forward', 'r') as f:
+        if f.read().strip() != 1:
+            needs_forwarding = True
 
-    if not DRY_RUN:
-        with open('/proc/sys/net/ipv4/ip_forward', 'w') as f:
+    if needs_forwarding:
+        logger.info('Enabling ip forwarding')
+
+        if not DRY_RUN:
+            with open('/proc/sys/net/ipv4/ip_forward', 'w') as f:
+                f.write('1')
             f.write('1')
 
 
