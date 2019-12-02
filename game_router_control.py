@@ -26,15 +26,10 @@ INIT_RULES = [
 
 OPEN_NETWORK_RULES = [
     'FORWARD -i eth+ -o eth+ -j ACCEPT',  # teams & vulnboxes can access other vulnboxes
-]  # teams cannot access each other (not even through vulnboxes)
+]
 
 DROP_RULES = [
     'FORWARD -j DROP',  # drop all forwarded packets that are not explicitly allowed above
-]
-
-ALLOW_SSH_RULES = [
-    'INPUT -p tcp --dport 22 -m state --state NEW,RELATED,ESTABLISHED -j ACCEPT',  # ingoing SSH
-    'OUTPUT -p tcp --sport 22 -m state --state RELATED,ESTABLISHED -j ACCEPT',  # outgoing SSH
 ]
 
 

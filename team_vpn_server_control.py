@@ -19,6 +19,7 @@ INIT_RULES = [
     'INPUT -p icmp --icmp-type 0 -m state --state NEW,ESTABLISHED,RELATED -j ACCEPT',  # allow icmp 0
 
     'INPUT -p udp --dport 30001:30999 -j ACCEPT',  # openvpn team servers
+    'INPUT -p tcp --dport 9100 -j ACCEPT',  # node_exporter metrics
     'POSTROUTING -t nat -o eth0 -j MASQUERADE',  # masquerade all output
 ]
 
