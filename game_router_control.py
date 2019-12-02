@@ -78,13 +78,11 @@ def rule_exists(rule):
 
 
 def add_drop_rules(*_args, **_kwargs):
-    add_rules(ALLOW_SSH_RULES)
     add_rules(DROP_RULES)
 
 
 def remove_drop_rules(*_args, **_kwargs):
     remove_rules(DROP_RULES)
-    remove_rules(ALLOW_SSH_RULES)
 
 
 def init_network(*, teams, **_kwargs):
