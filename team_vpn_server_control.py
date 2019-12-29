@@ -20,7 +20,7 @@ INIT_RULES = [
 
     'INPUT -p udp --dport 30001:30999 -j ACCEPT',  # openvpn team servers
     'INPUT -p tcp --dport 9100 -j ACCEPT',  # node_exporter metrics
-    'POSTROUTING -t nat -o eth0 -j MASQUERADE',  # masquerade all output
+    # 'POSTROUTING -t nat -o eth0 -j MASQUERADE',  # masquerade all output
 ]
 
 DROP_RULES = [
