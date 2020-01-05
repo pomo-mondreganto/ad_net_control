@@ -35,14 +35,14 @@ DROP_RULES = [
 
 def get_isolation_rules(team):
     return [
-        f'FORWARD ! -s 10.60.{team}.0/24 -o eth{team} -j DROP',  # allow access to team only
+        f'FORWARD ! -s 10.60.{team}.0/24 -o eth{team + 1} -j DROP',  # allow access to team only
     ]
 
 
 def get_ban_rules(team):
     return [
-        f'FORWARD -i eth{team} -j DROP',  # deny all incoming to vulnbox
-        f'FORWARD -o eth{team} -j DROP',  # deny all outgoing from vulnbox
+        f'FORWARD -i eth{team + 1} -j DROP',  # deny all incoming to vulnbox
+        f'FORWARD -o eth{team + 1} -j DROP',  # deny all outgoing from vulnbox
         f'FORWARD -s 10.60.{team}.0/24 -j DROP'  # deny all ingoing from team subnet
     ]
 
@@ -50,7 +50,7 @@ def get_ban_rules(team):
 def get_team2vuln_rules(teams_list):
     """During closed network period, team can only access its own vulnbox"""
     return list(
-        f'FORWARD -s 10.60.{num}.0/24 -o eth{num} -j ACCEPT'
+        f'FORWARD -s 10.60.{num}.0/24 -o eth{num + 1} -j ACCEPT'
         for num in teams_list
     )
 
