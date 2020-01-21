@@ -22,7 +22,8 @@ INIT_RULES = [
     'INPUT -p icmp --icmp-type 8 -m state --state NEW,ESTABLISHED,RELATED -j ACCEPT',  # allow icmp 8
     'INPUT -p icmp --icmp-type 0 -m state --state NEW,ESTABLISHED,RELATED -j ACCEPT',  # allow icmp 0
 
-    'INPUT -p udp --dport 31001:31999 -j ACCEPT',  # openvpn vulnbox servers
+    'INPUT -p udp --dport 31000:31999 -j ACCEPT',  # openvpn vulnbox servers
+    'INPUT -p tcp --dport 9100 -j ACCEPT',  # node_exporter metrics
 
     'FORWARD -m state --state RELATED,ESTABLISHED -j ACCEPT',  # allow already established connections
     'FORWARD -s 10.10.10.0/24 -o vuln+ -j ACCEPT',  # jury access to vulnboxes
