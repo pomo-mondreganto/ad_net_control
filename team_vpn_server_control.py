@@ -20,10 +20,12 @@ INIT_RULES = [
 
     'INPUT -p udp --dport 30000:30999 -j ACCEPT',  # openvpn team servers
     'INPUT -p tcp --dport 9100 -j ACCEPT',  # node_exporter metrics
-    # 'POSTROUTING -t nat -o eth0 -j MASQUERADE',  # masquerade all output
+    'FORWARD -i team+ -o eth0 -j ACCEPT',  # allow traffic from teams to jury network
+    'POSTROUTING -t nat -o team+ -j MASQUERADE',  # masquerade all team incoming traffic
 ]
 
 DROP_RULES = [
+    'FORWARD -j DROP',
     'INPUT -j DROP',  # drop all incoming packets that are not explicitly allowed above
 ]
 

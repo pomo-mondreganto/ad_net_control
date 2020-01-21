@@ -49,7 +49,7 @@ ALLOW_SSH_RULES = [
 
 def get_isolation_rules(team):
     return [
-        f'FORWARD -o vuln{team} -j DROP',  # To be inserted after the rule -i teamN -o vulnN
+        f'FORWARD ! -s 10.60.{team}.0/24 -o vuln{team} -j DROP',  # To be inserted after the rule -i teamN -o vulnN
     ]
 
 
