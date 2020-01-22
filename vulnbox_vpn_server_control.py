@@ -6,7 +6,6 @@ import shlex
 import subprocess
 import re
 
-
 from helpers import (
     logger,
     add_rules,
@@ -32,8 +31,7 @@ INIT_RULES = [
 ]
 
 OPEN_NETWORK_RULES = [
-    'FORWARD -i eth0 -o vuln+ -j ACCEPT',  # everybody from jury network has access to vulnboxes
-    'FORWARD -i vuln+ -o eth0 -j ACCEPT',  # vise-versa
+    'FORWARD -j ACCEPT'  # everybody has access to everybody
 ]  # teams cannot access each other (not even through vulnboxes)
 
 DROP_RULES = [
