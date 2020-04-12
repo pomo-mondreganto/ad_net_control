@@ -2,13 +2,15 @@
 
 import argparse
 import logging
+import re
 import shlex
 import subprocess
-import re
+from typing import List, Optional
 
 from helpers import (
     logger,
     add_rules,
+    get_team_ip,
     list_rules,
     insert_rules,
     remove_rules,
@@ -28,6 +30,7 @@ INIT_RULES = [
     'FORWARD -s 10.10.10.0/24 -o vuln+ -j ACCEPT',  # jury access to vulnboxes
 
     'POSTROUTING -t nat -o vuln+ -j MASQUERADE',  # vulnboxes masquerade
+    'POSTROUTING -t mangle -o vuln+ -j TTL --ttl-set 137',  # To prevent ttl filtering
 ]
 
 OPEN_NETWORK_RULES = [
@@ -45,36 +48,25 @@ ALLOW_SSH_RULES = [
 ]
 
 
-def get_isolation_rules(team):
+def get_isolation_rules(team: int):
     return [
-        f'FORWARD ! -s 10.60.{team}.0/24 -o vuln{team} -j DROP',  # To be inserted after the rule -i teamN -o vulnN
+        f'FORWARD ! -s {get_team_ip(team)} -o vuln{team} -j DROP',  # To be inserted after the rule -i teamN -o vulnN
     ]
 
 
-def get_ban_rules(team):
+def get_ban_rules(team: int):
     return [
         f'FORWARD -i vuln{team} -j DROP',  # To be inserted before the rule -i teamN -o vulnN
         f'FORWARD -o vuln{team} -j DROP',  # To be inserted before the rule -i vulnN -o teamN
     ]
 
 
-def get_team2vuln_rules(teams_list):
+def get_team2vuln_rules(teams_list: List[int]):
     """During closed network period, team can only access its own vulnbox (and vise versa)"""
     return list(
-        f'FORWARD -s 10.60.{num}.0/24 -o vuln{num} -j ACCEPT'
+        f'FORWARD -s {get_team_ip(num)} -o vuln{num} -j ACCEPT'
         for num in teams_list
     )
-
-
-def get_rules_list():
-    command = ['iptables', '-S']
-    out = subprocess.check_output(command)
-    result = out.decode().split('\n')
-    result = list(map(
-        lambda x: ' '.join(x.split(' ')[1:]),
-        filter(lambda x: x, result),
-    ))
-    return result
 
 
 def rule_exists(rule):
@@ -98,7 +90,7 @@ def remove_drop_rules(*_args, **_kwargs):
     remove_rules(ALLOW_SSH_RULES)
 
 
-def init_network(*, teams, **_kwargs):
+def init_network(*, teams: List[int], **_kwargs):
     if teams is None:
         logger.error('Specify all required parameters: teams')
         exit(1)
@@ -124,7 +116,7 @@ def close_network(*_args, **_kwargs):
     remove_rules(OPEN_NETWORK_RULES)
 
 
-def shutdown_network(*, teams, **_kwargs):
+def shutdown_network(*, teams: Optional[List[int]], **_kwargs):
     if teams is None:
         logger.error('Specify all required parameters: teams')
         exit(1)
@@ -134,7 +126,7 @@ def shutdown_network(*, teams, **_kwargs):
     remove_rules(all_rules)
 
 
-def ban_team(teams, team, *_args, **_kwargs):
+def ban_team(teams: Optional[List[int]], team: Optional[int], *_args, **_kwargs):
     if teams is None or team is None:
         logger.error('Specify all required parameters: teams, team')
         exit(1)
@@ -144,7 +136,7 @@ def ban_team(teams, team, *_args, **_kwargs):
     insert_rules(get_ban_rules(team), count_before)
 
 
-def isolate_team(teams, team, *_args, **_kwargs):
+def isolate_team(teams: Optional[List[int]], team: Optional[int], *_args, **_kwargs):
     if teams is None or team is None:
         logger.error('Specify all required parameters: teams, team')
         exit(1)

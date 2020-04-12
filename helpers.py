@@ -78,3 +78,7 @@ def remove_rules(rules):
             run_command(command)
 
     logger.info(f'Done removing {len(rules)} rules')
+
+
+def get_team_ip(team: int):
+    return f'10.{60 + team // 256}.{team % 256}.0/24'
