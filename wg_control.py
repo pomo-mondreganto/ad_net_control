@@ -63,10 +63,6 @@ def get_team2vuln_rules(teams_list: List[int]):
 
 
 def init_network(*, teams: List[int], **_kwargs):
-    if teams is None:
-        logger.error('Specify all required parameters: teams')
-        exit(1)
-
     add_rules(INIT_RULES)
     add_rules(get_team2vuln_rules(teams))
     add_rules(ALLOW_SSH_RULES)
@@ -89,14 +85,16 @@ def close_network(*_args, **_kwargs):
 
 
 def shutdown_network(*, teams: Optional[List[int]], **_kwargs):
-    if teams is None:
-        logger.error('Specify all required parameters: teams')
-        exit(1)
-
     remove_rules(INIT_RULES)
     remove_rules(get_team2vuln_rules(teams))
+
+    for team in teams:
+        remove_rules(get_ban_rules(team))
+        remove_rules(get_isolation_rules(team))
+
     set_chain_policy('INPUT', 'ACCEPT')
     set_chain_policy('FORWARD', 'DROP')
+
     remove_rules(ALLOW_SSH_RULES)
 
 
@@ -129,6 +127,7 @@ COMMANDS = {
 }
 
 if __name__ == '__main__':
+    # TODO: add subparsers with arguments validation
     parser = argparse.ArgumentParser(description='Manage router network during AD CTF')
     parser.add_argument('command', choices=COMMANDS.keys(), help='Command to run')
     parser.add_argument('--team', type=int, metavar='N', help='Team number (1-indexed) for ban or isolation')
