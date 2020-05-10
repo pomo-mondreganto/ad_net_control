@@ -8,7 +8,9 @@ from typing import List, Optional
 from helpers import (
     logger,
     add_rules,
+    set_chain_policy,
     get_team_subnet,
+    get_vuln_ip,
     list_rules,
     insert_rules,
     remove_rules,
@@ -21,23 +23,14 @@ INIT_RULES = [
     'INPUT -p icmp --icmp-type 8 -m state --state NEW,ESTABLISHED,RELATED -j ACCEPT',  # allow icmp 8
     'INPUT -p icmp --icmp-type 0 -m state --state NEW,ESTABLISHED,RELATED -j ACCEPT',  # allow icmp 0
 
-    'INPUT -p udp --dport 31000:31999 -j ACCEPT',  # openvpn vulnbox servers
+    'INPUT -p udp --dport 30000:31999 -j ACCEPT',  # wireguard listeners
     'INPUT -p tcp --dport 9100 -j ACCEPT',  # node_exporter metrics
 
     'FORWARD -m state --state RELATED,ESTABLISHED -j ACCEPT',  # allow already established connections
-    'FORWARD -s 10.10.10.0/24 -o vuln+ -j ACCEPT',  # jury access to vulnboxes
+    'FORWARD -s 10.10.10.0/24 -j ACCEPT',  # jury access to everything
 
-    'POSTROUTING -t nat -o vuln+ -j MASQUERADE',  # vulnboxes masquerade
-    'POSTROUTING -t mangle -o vuln+ -j TTL --ttl-set 137',  # To prevent ttl filtering
-]
-
-OPEN_NETWORK_RULES = [
-    'FORWARD -j ACCEPT'  # everybody has access to everybody
-]  # teams cannot access each other (not even through vulnboxes)
-
-DROP_RULES = [
-    'INPUT -j DROP',  # drop all incoming packets that are not explicitly allowed above
-    'FORWARD -j DROP',  # drop all forwarded packets that are not explicitly allowed above
+    'POSTROUTING -t nat -o wg0 -j MASQUERADE',  # everything masqueraded
+    'POSTROUTING -t mangle -o wg0 -j TTL --ttl-set 137',  # To prevent ttl filtering
 ]
 
 ALLOW_SSH_RULES = [
@@ -46,35 +39,27 @@ ALLOW_SSH_RULES = [
 ]
 
 
+# insert them first
 def get_isolation_rules(team: int):
     return [
-        f'FORWARD ! -s {get_team_subnet(team)} -o vuln{team} -j DROP',
+        f'FORWARD ! -s {get_team_subnet(team)} -d {get_vuln_ip(team)} -j DROP',
     ]
 
 
+# insert them first
 def get_ban_rules(team: int):
     return [
-        f'FORWARD -i vuln{team} -j DROP',  # To be inserted before the rule -i teamN -o vulnN
-        f'FORWARD -o vuln{team} -j DROP',  # To be inserted before the rule -i vulnN -o teamN
+        f'FORWARD -s {get_team_subnet(team)} -j DROP',
+        f'FORWARD -s {get_vuln_ip(team)} -j DROP',
     ]
 
 
 def get_team2vuln_rules(teams_list: List[int]):
-    """During closed network period, team can only access its own vulnbox (and vise versa)"""
+    """During closed network period, team can only access its own vulnbox"""
     return list(
-        f'FORWARD -s {get_team_subnet(num)} -o vuln{num} -j ACCEPT'
+        f'FORWARD -s {get_team_subnet(num)} -d {get_vuln_ip(num)} -j ACCEPT'
         for num in teams_list
     )
-
-
-def add_drop_rules(*_args, **_kwargs):
-    add_rules(ALLOW_SSH_RULES)
-    add_rules(DROP_RULES)
-
-
-def remove_drop_rules(*_args, **_kwargs):
-    remove_rules(DROP_RULES)
-    remove_rules(ALLOW_SSH_RULES)
 
 
 def init_network(*, teams: List[int], **_kwargs):
@@ -82,9 +67,11 @@ def init_network(*, teams: List[int], **_kwargs):
         logger.error('Specify all required parameters: teams')
         exit(1)
 
-    rules = INIT_RULES + get_team2vuln_rules(teams)
-    add_rules(rules)
-    add_drop_rules()
+    add_rules(INIT_RULES)
+    add_rules(get_team2vuln_rules(teams))
+    add_rules(ALLOW_SSH_RULES)
+    set_chain_policy('INPUT', 'DROP')
+    set_chain_policy('FORWARD', 'DROP')
 
     logger.info('Enabling ip forwarding')
 
@@ -94,13 +81,11 @@ def init_network(*, teams: List[int], **_kwargs):
 
 
 def open_network(*_args, **_kwargs):
-    remove_drop_rules()
-    add_rules(OPEN_NETWORK_RULES)
-    add_drop_rules()
+    set_chain_policy('FORWARD', 'ACCEPT')
 
 
 def close_network(*_args, **_kwargs):
-    remove_rules(OPEN_NETWORK_RULES)
+    set_chain_policy('FORWARD', 'DROP')
 
 
 def shutdown_network(*, teams: Optional[List[int]], **_kwargs):
@@ -108,29 +93,27 @@ def shutdown_network(*, teams: Optional[List[int]], **_kwargs):
         logger.error('Specify all required parameters: teams')
         exit(1)
 
-    remove_drop_rules()
-    all_rules = OPEN_NETWORK_RULES + INIT_RULES + get_team2vuln_rules(teams)
-    remove_rules(all_rules)
+    remove_rules(INIT_RULES)
+    remove_rules(get_team2vuln_rules(teams))
+    set_chain_policy('INPUT', 'ACCEPT')
+    set_chain_policy('FORWARD', 'DROP')
+    remove_rules(ALLOW_SSH_RULES)
 
 
-def ban_team(teams: Optional[List[int]], team: Optional[int], *_args, **_kwargs):
-    if teams is None or team is None:
-        logger.error('Specify all required parameters: teams, team')
-        exit(1)
-
-    forward_init_rules = list(filter(lambda x: x.startswith('FORWARD'), INIT_RULES))
-    count_before = len(forward_init_rules) + len(get_team2vuln_rules(teams))
-    insert_rules(get_ban_rules(team), count_before)
+def ban_team(team: Optional[int], *_args, **_kwargs):
+    insert_rules(get_ban_rules(team), 1)
 
 
-def isolate_team(teams: Optional[List[int]], team: Optional[int], *_args, **_kwargs):
-    if teams is None or team is None:
-        logger.error('Specify all required parameters: teams, team')
-        exit(1)
+def unban_team(team: Optional[int], *_args, **_kwargs):
+    remove_rules(get_ban_rules(team))
 
-    forward_init_rules = list(filter(lambda x: x.startswith('FORWARD'), INIT_RULES))
-    count_before = len(forward_init_rules) + len(get_team2vuln_rules(teams))
-    insert_rules(get_isolation_rules(team), count_before)
+
+def isolate_team(team: Optional[int], *_args, **_kwargs):
+    insert_rules(get_isolation_rules(team), 1)
+
+
+def deisolate_team(team: Optional[int], *_args, **_kwargs):
+    remove_rules(get_isolation_rules(team))
 
 
 COMMANDS = {
@@ -138,11 +121,11 @@ COMMANDS = {
     'open': open_network,
     'close': close_network,
     'shutdown': shutdown_network,
-    'add_drop': add_drop_rules,
-    'remove_drop': remove_drop_rules,
     'list': list_rules,
     'ban': ban_team,
+    'unban': unban_team,
     'isolate': isolate_team,
+    'deisolate': deisolate_team,
 }
 
 if __name__ == '__main__':

@@ -80,5 +80,16 @@ def remove_rules(rules):
     logger.info(f'Done removing {len(rules)} rules')
 
 
-def get_team_ip(team: int):
+def set_chain_policy(chain, policy):
+    logger.debug(f'Setting chain {chain} policy to {policy}')
+    command = ['iptables', '-P', chain, policy]
+    run_command(command)
+    logger.debug(f'Setting chain {chain} policy')
+
+
+def get_team_subnet(team: int):
     return f'10.{60 + team // 256}.{team % 256}.0/24'
+
+
+def get_vuln_ip(team: int):
+    return f'10.{80 + team // 256}.{team % 256}.2'

@@ -2,10 +2,8 @@
 
 import argparse
 import logging
-import shlex
-import subprocess
 import re
-
+import subprocess
 
 from helpers import (
     logger,
@@ -86,17 +84,6 @@ def get_rules_list():
         filter(lambda x: x, result),
     ))
     return result
-
-
-def rule_exists(rule):
-    if DRY_RUN:
-        return False
-
-    logger.debug(f"Checking if rule {rule} exists")
-
-    command = ['iptables', '-C'] + shlex.split(rule)
-    rc = subprocess.call(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    return rc == 0
 
 
 def add_drop_rules(*_args, **_kwargs):
