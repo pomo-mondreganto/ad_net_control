@@ -1,4 +1,5 @@
 import logging
+import re
 import shlex
 import subprocess
 
@@ -84,7 +85,6 @@ def set_chain_policy(chain, policy):
     logger.debug(f'Setting chain {chain} policy to {policy}')
     command = ['iptables', '-P', chain, policy]
     run_command(command)
-    logger.debug(f'Setting chain {chain} policy')
 
 
 def get_team_subnet(team: int):
@@ -93,3 +93,19 @@ def get_team_subnet(team: int):
 
 def get_vuln_ip(team: int):
     return f'10.{80 + team // 256}.{team % 256}.2'
+
+
+def parse_arguments_teams(args):
+    if args.teams:
+        parsed_teams = range(1, args.teams + 1)
+    elif args.range:
+        match = re.search(r"(\d+)-(\d+)", args.range)
+        if not match:
+            print('Invalid range')
+            exit(1)
+
+        parsed_teams = range(int(match.group(1)), int(match.group(2)) + 1)
+    else:
+        parsed_teams = list(map(int, args.list.split(',')))
+
+    args.teams = parsed_teams
