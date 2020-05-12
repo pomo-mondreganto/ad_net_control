@@ -7,8 +7,15 @@ from typing import List
 
 import helpers
 
+CUSTOM_CHAINS = [
+    'team-to-team',  # validates access between teams
+    'closed-network',
+    'open-network',
+]
+
 INIT_RULES = [
     'INPUT -m state --state RELATED,ESTABLISHED -j ACCEPT',  # allow already established connections
+    'INPUT -m conntrack --ctstate INVALID -j DROP',  # drop invalid packets
     'INPUT -i lo -j ACCEPT',  # accept all local connections
     'INPUT -p icmp --icmp-type 8 -m state --state NEW,ESTABLISHED,RELATED -j ACCEPT',  # allow icmp 8
     'INPUT -p icmp --icmp-type 0 -m state --state NEW,ESTABLISHED,RELATED -j ACCEPT',  # allow icmp 0
@@ -19,6 +26,8 @@ INIT_RULES = [
     'FORWARD -m state --state RELATED,ESTABLISHED -j ACCEPT',  # allow already established connections
     'FORWARD -s 10.10.10.0/24 -j ACCEPT',  # jury access to everything
 
+    'FORWARD -s 10.60.0.0/14 -d 10.60.0.0/14 -j team-to-team',
+
     'POSTROUTING -t nat -o wg0 -j MASQUERADE',  # everything masqueraded
     'POSTROUTING -t mangle -o wg0 -j TTL --ttl-set 137',  # To prevent ttl filtering
 ]
@@ -27,6 +36,18 @@ ALLOW_SSH_RULES = [
     'INPUT -p tcp --dport 22 -m state --state NEW,RELATED,ESTABLISHED -j ACCEPT',  # ingoing SSH
     'OUTPUT -p tcp --sport 22 -m state --state RELATED,ESTABLISHED -j ACCEPT',  # outgoing SSH
 ]
+
+OPEN_NETWORK_RULES = [
+    'open-network -s 10.60.0.0/14 -d 10.10.10.0/24 -j ACCEPT',  # teams can access jury
+    'open-network -s 10.60.0.0/14 -d 10.80.0.0/14 -j ACCEPT',  # teams can access all vulnboxes
+    'open-network -s 10.70.0.0/14 -d 10.10.10.0/24 -j ACCEPT',  # vulnboxes can access jury
+]
+
+# forwarding traffic to closed-network chain
+CLOSED_NETWORK_FORWARDING = ['FORWARD -j closed-network']
+
+# forwarding traffic to open-network chain
+OPEN_NETWORK_FORWARDING = ['FORWARD -j open-network']
 
 
 # insert them first
@@ -47,18 +68,37 @@ def get_ban_rules(team: int):
 def get_team2vuln_rules(teams_list: List[int]):
     """During closed network period, team can only access its own vulnbox"""
     return list(
-        f'FORWARD -s {helpers.get_team_subnet(num)} -d {helpers.get_vuln_ip(num)} -j ACCEPT'
-        for num in teams_list
+        f'closed-network -s {helpers.get_team_subnet(team)} -d {helpers.get_vuln_ip(team)} -j ACCEPT'
+        for team in teams_list
+    )
+
+
+def get_in_team_rules(teams_list: List[int]):
+    return list(
+        f'team-to-team -s {helpers.get_team_subnet(team)} -d {helpers.get_team_subnet(team)} -j ACCEPT'
+        for team in teams_list
     )
 
 
 def init_network(args):
+    for chain in CUSTOM_CHAINS:
+        helpers.create_chain(chain)
+        helpers.flush_chain(chain)
+        helpers.set_chain_policy(chain, 'DROP')
+
     helpers.parse_arguments_teams(args)
     helpers.add_rules(INIT_RULES)
-    helpers.add_rules(get_team2vuln_rules(args.teams))
     helpers.add_rules(ALLOW_SSH_RULES)
     helpers.set_chain_policy('INPUT', 'DROP')
     helpers.set_chain_policy('FORWARD', 'DROP')
+
+    helpers.add_rules(get_team2vuln_rules(args.teams))
+    helpers.add_rules(get_in_team_rules(args.teams))
+
+    # just add the rules to the chain
+    helpers.add_rules(OPEN_NETWORK_RULES)
+
+    close_network(args)
 
     helpers.logger.info('Enabling ip forwarding')
 
@@ -68,17 +108,18 @@ def init_network(args):
 
 
 def open_network(_args):
-    helpers.set_chain_policy('FORWARD', 'ACCEPT')
+    helpers.remove_rules(CLOSED_NETWORK_FORWARDING)
+    helpers.add_rules(OPEN_NETWORK_FORWARDING)
 
 
 def close_network(_args):
-    helpers.set_chain_policy('FORWARD', 'DROP')
+    helpers.remove_rules(OPEN_NETWORK_FORWARDING)
+    helpers.add_rules(CLOSED_NETWORK_FORWARDING)
 
 
 def shutdown_network(args):
     helpers.parse_arguments_teams(args)
     helpers.remove_rules(INIT_RULES)
-    helpers.remove_rules(get_team2vuln_rules(args.teams))
 
     isolation_rules = sum((get_isolation_rules(team) for team in args.teams), [])
     helpers.remove_rules(isolation_rules)
@@ -90,6 +131,11 @@ def shutdown_network(args):
     helpers.set_chain_policy('FORWARD', 'DROP')
 
     helpers.remove_rules(ALLOW_SSH_RULES)
+    helpers.remove_rules(CLOSED_NETWORK_FORWARDING)
+    helpers.remove_rules(OPEN_NETWORK_FORWARDING)
+
+    for chain in CUSTOM_CHAINS:
+        helpers.remove_chain(chain)
 
 
 def ban_team(args):
@@ -108,6 +154,13 @@ def deisolate_team(args):
     helpers.remove_rules(get_isolation_rules(args.team))
 
 
+def add_teams_arguments(command_parser):
+    teams_group = command_parser.add_mutually_exclusive_group(required=True)
+    teams_group.add_argument('--teams', '-t', type=int, metavar='N', help='Team count')
+    teams_group.add_argument('--range', type=str, metavar='N-N', help='Range of teams (inclusive)')
+    teams_group.add_argument('--list', type=str, metavar='N,N,...', help='List of teams')
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Manage network during AD CTF')
     parser.add_argument('--verbose', '-v', help='Turn verbose logging on', action='store_true')
@@ -117,11 +170,7 @@ if __name__ == '__main__':
 
     init_parser = subparsers.add_parser('init', help='Bootstrap the network')
     init_parser.set_defaults(func=init_network)
-
-    init_teams_group = init_parser.add_mutually_exclusive_group(required=True)
-    init_teams_group.add_argument('--teams', '-t', type=int, metavar='N', help='Team count')
-    init_teams_group.add_argument('--range', type=str, metavar='N-N', help='Range of teams (inclusive)')
-    init_teams_group.add_argument('--list', type=str, metavar='N,N,...', help='List of teams')
+    add_teams_arguments(init_parser)
 
     open_parser = subparsers.add_parser('open', help='Open the network')
     open_parser.set_defaults(func=open_network)
@@ -131,11 +180,7 @@ if __name__ == '__main__':
 
     shutdown_parser = subparsers.add_parser('shutdown', help='Remove all the added rules')
     shutdown_parser.set_defaults(func=shutdown_network)
-
-    shutdown_teams_group = shutdown_parser.add_mutually_exclusive_group(required=True)
-    shutdown_teams_group.add_argument('--teams', '-t', type=int, metavar='N', help='Team count')
-    shutdown_teams_group.add_argument('--range', type=str, metavar='N-N', help='Range of teams (inclusive)')
-    shutdown_teams_group.add_argument('--list', type=str, metavar='N,N,...', help='List of teams')
+    add_teams_arguments(shutdown_parser)
 
     list_parser = subparsers.add_parser('list', help='List added rules')
     list_parser.set_defaults(func=helpers.list_rules)

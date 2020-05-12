@@ -87,6 +87,41 @@ def set_chain_policy(chain, policy):
     run_command(command)
 
 
+def chain_exists(chain):
+    logger.debug(f'Checking if chain {chain} exists')
+    if DRY_RUN:
+        return False
+    command = ['iptables', '-S']
+    out = subprocess.check_output(command).decode()
+    return f'-N {chain}' in out.split('\n')
+
+
+def create_chain(chain):
+    if not chain_exists(chain):
+        logger.debug(f'Chain {chain} does already exists')
+        return
+    logger.debug(f'Creating chain {chain}')
+    command = ['iptables', '-N', chain]
+    run_command(command)
+
+
+def flush_chain(chain):
+    logger.debug(f'Flushing chain {chain}')
+    command = ['iptables', '-F', chain]
+    run_command(command)
+
+
+def remove_chain(chain):
+    if not chain_exists(chain):
+        logger.debug(f'Chain {chain} does not exist')
+        return
+
+    flush_chain(chain)
+    logger.debug(f'Removing chain {chain}')
+    command = ['iptables', '-X', chain]
+    run_command(command)
+
+
 def get_team_subnet(team: int):
     return f'10.{60 + team // 256}.{team % 256}.0/24'
 
