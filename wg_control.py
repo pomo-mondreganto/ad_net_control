@@ -3,14 +3,17 @@
 import argparse
 import logging
 import traceback
-from typing import List
 
 import helpers
 
 CUSTOM_CHAINS = [
-    'team-to-team',  # validates access between teams
     'closed-network',
     'open-network',
+]
+
+SETS = [
+    'same-team',
+    'team-vulnbox',
 ]
 
 INIT_RULES = [
@@ -25,8 +28,6 @@ INIT_RULES = [
 
     'FORWARD -m state --state RELATED,ESTABLISHED -j ACCEPT',  # allow already established connections
     'FORWARD -s 10.10.10.0/24 -j ACCEPT',  # jury access to everything
-
-    'FORWARD -s 10.60.0.0/14 -d 10.60.0.0/14 -j team-to-team',
 
     'POSTROUTING -t nat -o wg0 -j MASQUERADE',  # everything masqueraded
     'POSTROUTING -t mangle -o wg0 -j TTL --ttl-set 137',  # To prevent ttl filtering
@@ -65,26 +66,22 @@ def get_ban_rules(team: int):
     ]
 
 
-def get_team2vuln_rules(teams_list: List[int]):
+def get_team2vuln_rules():
     """During closed network period, team can only access its own vulnbox"""
-    return list(
-        f'closed-network -s {helpers.get_team_subnet(team)} -d {helpers.get_vuln_ip(team)} -j ACCEPT'
-        for team in teams_list
-    )
+    return [f'closed-network -m set --match-set team-vulnbox src,dst -j ACCEPT']
 
 
-def get_in_team_rules(teams_list: List[int]):
-    return list(
-        f'team-to-team -s {helpers.get_team_subnet(team)} -d {helpers.get_team_subnet(team)} -j ACCEPT'
-        for team in teams_list
-    )
+def get_in_team_rules():
+    return ['FORWARD -m set --match-set same-team src,dst -j ACCEPT']
 
 
 def init_network(args):
     for chain in CUSTOM_CHAINS:
         helpers.create_chain(chain)
-        helpers.flush_chain(chain)
         helpers.set_chain_policy(chain, 'DROP')
+
+    for s in SETS:
+        helpers.create_set(s)
 
     helpers.parse_arguments_teams(args)
     helpers.add_rules(INIT_RULES)
@@ -92,8 +89,14 @@ def init_network(args):
     helpers.set_chain_policy('INPUT', 'DROP')
     helpers.set_chain_policy('FORWARD', 'DROP')
 
-    helpers.add_rules(get_team2vuln_rules(args.teams))
-    helpers.add_rules(get_in_team_rules(args.teams))
+    for team in args.teams:
+        team_subnet = helpers.get_team_subnet(team)
+        vulnbox_ip = helpers.get_vuln_ip(team)
+        helpers.add_to_set('same-team', team_subnet, team_subnet)
+        helpers.add_to_set('team-vulnbox', team_subnet, vulnbox_ip)
+
+    helpers.add_rules(get_team2vuln_rules())
+    helpers.add_rules(get_in_team_rules())
 
     # just add the rules to the chain
     helpers.add_rules(OPEN_NETWORK_RULES)
@@ -136,6 +139,9 @@ def shutdown_network(args):
 
     for chain in CUSTOM_CHAINS:
         helpers.remove_chain(chain)
+
+    for s in SETS:
+        helpers.remove_set(s)
 
 
 def ban_team(args):

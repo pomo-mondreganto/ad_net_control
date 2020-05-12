@@ -97,10 +97,10 @@ def chain_exists(chain):
 
 
 def create_chain(chain):
-    if not chain_exists(chain):
-        logger.debug(f'Chain {chain} does already exists')
-        return
     logger.debug(f'Creating chain {chain}')
+    if chain_exists(chain):
+        logger.debug(f'Chain {chain} already exists')
+        return
     command = ['iptables', '-N', chain]
     run_command(command)
 
@@ -119,6 +119,42 @@ def remove_chain(chain):
     flush_chain(chain)
     logger.debug(f'Removing chain {chain}')
     command = ['iptables', '-X', chain]
+    run_command(command)
+
+
+def set_exists(name):
+    logger.debug(f'Checking if ipset {name} exists')
+    if DRY_RUN:
+        return False
+    command = ['ipset', 'list']
+    out = subprocess.check_output(command).decode()
+    return f'Name: {name}\n' in out
+
+
+def create_set(name):
+    logger.debug(f'Creating ipset {name}')
+    if set_exists(name):
+        logger.debug(f'ipset {name} already exists')
+        return
+    command = ['ipset', 'create', name, 'hash:net,net']
+    run_command(command)
+
+
+def remove_set(name):
+    logger.debug(f'Removing ipset {name}')
+    if not set_exists(name):
+        logger.debug(f'ipset {name} does not exist')
+        return
+    command = ['ipset', 'destroy', name]
+    run_command(command)
+
+
+def add_to_set(name, net1, net2):
+    logger.debug(f'Adding pair {net1},{net2} to ipset {name}')
+    if not set_exists(name):
+        logger.debug(f'ipset {name} does not exist')
+        return
+    command = ['ipset', 'add', name, f'{net1},{net2}']
     run_command(command)
 
 
