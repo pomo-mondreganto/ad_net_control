@@ -41,7 +41,7 @@ ALLOW_SSH_RULES = [
 OPEN_NETWORK_RULES = [
     'open-network -s 10.60.0.0/14 -d 10.10.10.0/24 -j ACCEPT',  # teams can access jury
     'open-network -s 10.60.0.0/14 -d 10.80.0.0/14 -j ACCEPT',  # teams can access all vulnboxes
-    'open-network -s 10.70.0.0/14 -d 10.10.10.0/24 -j ACCEPT',  # vulnboxes can access jury
+    'open-network -s 10.80.0.0/14 -d 10.10.10.0/24 -j ACCEPT',  # vulnboxes can access jury
 ]
 
 # forwarding traffic to closed-network chain
