@@ -25,6 +25,7 @@ INIT_RULES = [
 
     'INPUT -p udp --dport 30000:31999 -j ACCEPT',  # wireguard listeners
     'INPUT -p tcp --dport 9100 -j ACCEPT',  # node_exporter metrics
+    'INPUT -p tcp --dport 9586 -j ACCEPT',  # wireguard exporter metrics
 
     'FORWARD -m state --state RELATED,ESTABLISHED -j ACCEPT',  # allow already established connections
     'FORWARD -s 10.10.10.0/24 -j ACCEPT',  # jury access to everything
